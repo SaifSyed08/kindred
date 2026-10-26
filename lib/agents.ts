@@ -84,7 +84,7 @@ You are in a live conversation with ${other.firstName}'s agent. Your job: find o
 What you know about ${self.firstName}:
 ${dossier(self, args.selfMemories)}
 
-Context: ${relationLine(self, other, args.friendship)} About ${other.firstName} you only know their name and city (${other.city ?? "unknown"}); learn the rest from their agent.
+Context: ${relationLine(self, other, args.friendship)} About ${other.firstName} you only know their name, pronouns (${other.pronouns ?? "unknown - use they/them"}) and city (${other.city ?? "unknown"}); learn the rest from their agent. Refer to ${self.firstName} as ${self.pronouns ?? "they/them"}.
 
 How to talk:
 - Speak as an agent about your person in the third person ("${self.firstName} has been..."), warm and natural, never salesy. 1-3 sentences.
@@ -151,6 +151,7 @@ Score rubric (be calibrated):
 - 75-89: a strong specific shared activity both actively want to do soon.
 - 50-74: real but ordinary overlap, or one side is stretching to fit. Not worth an intro.
 - below 50: generic or mismatched.
+If the plan sits outside ${self.firstName}'s actual interests or what they're looking for (e.g. it only works if they do something they've never shown interest in), the score is at most 70, however keen the other agent was.
 Recommend only if score >= 75.
 
 ${dossier(self, args.selfMemories)}
@@ -207,7 +208,7 @@ export async function synthesizeMatch(args: {
     [
       {
         role: "system",
-        content: `Two personal AI agents on Kindred (for ${a.name} = A and ${b.name} = B) both decided to recommend a ${args.friendship ? "reconnection" : "new connection"}. Today is ${today()}. ${args.friendship ? `They're existing friends (${args.friendship.context}) who last spoke ${timeAgo(args.friendship.lastSpoke)}.` : "They have never met."}
+        content: `Two personal AI agents on Kindred (for ${a.name} = A, ${a.pronouns ?? "they/them"}, and ${b.name} = B, ${b.pronouns ?? "they/them"}) both decided to recommend a ${args.friendship ? "reconnection" : "new connection"}. Today is ${today()}. ${args.friendship ? `They're existing friends (${args.friendship.context}) who last spoke ${timeAgo(args.friendship.lastSpoke)}.` : "They have never met."}
 Write the match card and the personal invitations. Ground everything in what was actually said in the conversation; don't invent facts. The suggested activity should be concrete, low-pressure, and built on the strongest discovery. Never mention anything private.`,
       },
       {
@@ -244,7 +245,7 @@ export async function writeIntro(args: { a: User; b: User; reconnect: boolean; e
     [
       {
         role: "system",
-        content: `${a.firstName} and ${b.firstName} both accepted an introduction from their AI agents. You're writing the agents' opening messages in a new group chat with both humans in it. ${args.reconnect ? "They're old friends reconnecting - acknowledge it's been a while, lightly, without guilt-tripping." : "They've never met."}
+        content: `${a.firstName} (${a.pronouns ?? "they/them"}) and ${b.firstName} (${b.pronouns ?? "they/them"}) both accepted an introduction from their AI agents. You're writing the agents' opening messages in a new group chat with both humans in it. ${args.reconnect ? "They're old friends reconnecting - acknowledge it's been a while, lightly, without guilt-tripping." : "They've never met."}
 Write exactly 3 short messages: A's agent (from "a") greets both and says what it noticed, B's agent (from "b") adds the piece from its side and a specific icebreaker question for ${a.firstName}, then A's agent (from "a") proposes the activity and steps back so the humans can talk. Each 1-3 sentences, warm, specific, a little playful. Address the humans by first name. The agents are not the humans: each talks about its own person in the third person and never writes as if it were them (no "${b.firstName} here"). No emojis overload (at most one total).`,
       },
       {
