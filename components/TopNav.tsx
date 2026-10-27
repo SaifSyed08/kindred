@@ -29,17 +29,17 @@ export function TopNav() {
 
   return (
     <header className="glass sticky top-0 z-40 border-b border-line/70">
-      <div className="mx-auto flex h-16 max-w-[1320px] items-center gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-[1320px] items-center gap-2 px-4 sm:gap-4 sm:px-6">
         <Link href="/agent" className="flex items-center gap-2">
           <div className="bg-gradient-brand flex h-8 w-8 items-center justify-center rounded-xl text-sm font-bold text-white shadow-md">K</div>
           <span className="hidden text-lg font-bold tracking-tight sm:block">Kindred</span>
         </Link>
 
-        <nav className="mx-auto flex items-center gap-1 rounded-full bg-[#f0f2f5] p-1">
+        <nav className="mx-auto flex min-w-0 items-center gap-0.5 rounded-full bg-[#f0f2f5] p-1 sm:gap-1">
           {TABS.map((t) => {
             const active = path.startsWith(t.href);
             return (
-              <Link key={t.href} href={t.href} className="relative rounded-full px-3 py-1.5 text-sm font-semibold sm:px-5">
+              <Link key={t.href} href={t.href} className="relative rounded-full px-2.5 py-1.5 text-[13px] font-semibold whitespace-nowrap sm:px-5 sm:text-sm">
                 {active && (
                   <motion.span
                     layoutId="nav-pill"
@@ -62,7 +62,7 @@ export function TopNav() {
           <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pr-3 pl-1 hover:bg-[#f0f2f5]">
             <Avatar user={me} size={32} />
             <span className="hidden text-sm font-semibold md:block">{me?.firstName ?? "…"}</span>
-            <span className="text-xs text-ink-3">▾</span>
+            <span className="hidden text-xs text-ink-3 sm:inline">▾</span>
           </button>
           {open && (
             <motion.div
