@@ -6,7 +6,7 @@ export type ConvState = {
   b: string;
   relation: "stranger" | "friend";
   similarity: number;
-  messages: (AgentMessage & { fresh: boolean })[];
+  messages: (AgentMessage & { fresh: boolean; receivedAt: number })[];
   thinking: string | null;
   deliberating: boolean;
   verdicts: Record<string, Verdict>;
@@ -85,7 +85,7 @@ export function runReducer(s: RunState, act: RunAction): RunState {
       return patchConv(ev.message.conversationId, (c) => ({
         ...c,
         thinking: null,
-        messages: [...c.messages, { ...ev.message, fresh }],
+        messages: [...c.messages, { ...ev.message, fresh, receivedAt: t }],
         discoveries: [...c.discoveries, ...ev.message.discoveries],
         lastActivity: t,
       }));
@@ -94,7 +94,7 @@ export function runReducer(s: RunState, act: RunAction): RunState {
     case "verdict":
       return patchConv(ev.conversationId, (c) => ({ ...c, verdicts: { ...c.verdicts, [ev.sender]: ev.verdict }, lastActivity: t }));
     case "conversation_done":
-      return patchConv(ev.conversationId, (c) => ({ ...c, deliberating: false, outcome: ev.outcome, lastActivity: t }));
+      return patchConv(ev.conversationId, (c) => ({ ...c, thinking: null, deliberating: false, outcome: ev.outcome, lastActivity: t }));
     case "match":
       return { ...s, matches: [...s.matches, ev.match], freshMatchIds: fresh ? [...s.freshMatchIds, ev.match.id] : s.freshMatchIds };
     case "run_done":

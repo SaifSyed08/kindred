@@ -17,11 +17,13 @@ const TYPE_LABEL: Record<string, string> = {
 
 // Messages that have already been typed once; switching tabs remounts them and they should not retype.
 const typed = new Set<number>();
+const TYPE_WINDOW_MS = 2500;
 
-// Reveals text word by word for messages that just arrived; older ones render instantly.
-function Typewriter({ id, text, fresh, onTick }: { id: number; text: string; fresh: boolean; onTick?: () => void }) {
+// Reveals text word by word for messages that arrived in the last moment; anything older
+// (including messages that landed while another conversation was on screen) renders instantly.
+function Typewriter({ id, text, fresh, receivedAt, onTick }: { id: number; text: string; fresh: boolean; receivedAt: number; onTick?: () => void }) {
   const words = text.split(" ");
-  const [animate] = useState(() => fresh && !typed.has(id));
+  const [animate] = useState(() => fresh && !typed.has(id) && Date.now() - receivedAt < TYPE_WINDOW_MS);
   const [n, setN] = useState(animate ? 0 : words.length);
   useEffect(() => {
     typed.add(id);
@@ -193,7 +195,7 @@ export function ConversationPanel({
                           mine ? "bg-gradient-brand rounded-tr-md text-white" : "rounded-tl-md bg-[#f0f2f5] text-ink",
                         )}
                       >
-                        <Typewriter id={m.id} text={m.text} fresh={m.fresh} onTick={stick} />
+                        <Typewriter id={m.id} text={m.text} fresh={m.fresh} receivedAt={m.receivedAt} onTick={stick} />
                       </div>
                       {m.thought && (
                         <div className={cn("mt-1 flex items-start gap-1 text-[11px] text-ink-3 italic", mine && "justify-end")}>

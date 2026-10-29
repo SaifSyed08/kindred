@@ -27,9 +27,16 @@ function Connections() {
   const [selected, setSelected] = useState<string | null>(null);
   const params = useSearchParams();
 
+  // A response for a previous user (after switching in the menu) is dropped.
+  const currentUser = useRef(meId);
+  currentUser.current = meId;
   const load = useCallback(async () => {
-    const res = await fetch(`/api/matches?userId=${meId}`, { cache: "no-store" });
-    if (res.ok) setMatches((await res.json()).matches);
+    try {
+      const res = await fetch(`/api/matches?userId=${meId}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (currentUser.current === meId) setMatches(data.matches);
+    } catch {}
   }, [meId]);
 
   useEffect(() => {
@@ -51,7 +58,9 @@ function Connections() {
   }, [matches, params]);
 
   const respond = async (m: MatchView, accept: boolean) => {
-    await fetch(`/api/matches/${m.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId, accept }) });
+    try {
+      await fetch(`/api/matches/${m.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId, accept }) });
+    } catch {}
     await load();
     await refreshInvites();
   };
@@ -131,8 +140,11 @@ function Invitation({ match: m, me, onRespond }: { match: MatchView; me: User; o
   const invite = m.a === me.id ? m.inviteA : m.inviteB;
   const act = async (accept: boolean) => {
     setBusy(true);
-    await onRespond(m, accept);
-    setBusy(false);
+    try {
+      await onRespond(m, accept);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

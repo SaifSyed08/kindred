@@ -35,7 +35,7 @@ export async function jsonChat<T>(
         method: "POST",
         headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: opts.signal,
+        signal: attemptSignal(opts.signal),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -49,21 +49,39 @@ export async function jsonChat<T>(
     } catch (e) {
       lastErr = e;
       if ((e as { fatal?: boolean }).fatal || opts.signal?.aborted) break;
-      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+      await backoff(attempt);
     }
   }
   throw lastErr;
 }
 
+// Each attempt gets its own deadline so a stalled socket can't hang a run.
+const ATTEMPT_TIMEOUT_MS = 30000;
+function attemptSignal(outer?: AbortSignal) {
+  const t = AbortSignal.timeout(ATTEMPT_TIMEOUT_MS);
+  return outer ? AbortSignal.any([outer, t]) : t;
+}
+const backoff = (attempt: number) => new Promise((r) => setTimeout(r, 1500 * 2 ** attempt + Math.random() * 500));
+
 export async function embed(texts: string[]): Promise<number[][]> {
-  const res = await fetch(`${BASE}/embeddings`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
-  });
-  if (!res.ok) throw new Error(`embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { data: { embedding: number[]; index: number }[] };
-  return data.data.sort((x, y) => x.index - y.index).map((d) => d.embedding);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/embeddings`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
+        signal: attemptSignal(),
+      });
+      if (!res.ok) throw new Error(`embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      const data = (await res.json()) as { data: { embedding: number[]; index: number }[] };
+      return data.data.sort((x, y) => x.index - y.index).map((d) => d.embedding);
+    } catch (e) {
+      lastErr = e;
+      await backoff(attempt);
+    }
+  }
+  throw lastErr;
 }
 
 export async function transcribe(audio: Blob, filename: string): Promise<string> {
@@ -74,6 +92,7 @@ export async function transcribe(audio: Blob, filename: string): Promise<string>
     method: "POST",
     headers: { Authorization: `Bearer ${key()}` },
     body: form,
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`transcribe ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = (await res.json()) as { text: string };
@@ -91,5 +110,6 @@ export async function speak(text: string, voice = "coral"): Promise<Response> {
       instructions: "Warm, upbeat and conversational, like a thoughtful friend. Natural pacing, not salesy.",
       response_format: "mp3",
     }),
+    signal: AbortSignal.timeout(30000),
   });
 }

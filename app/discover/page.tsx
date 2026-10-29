@@ -32,27 +32,37 @@ function Discover() {
   const subscribe = useCallback(
     (runId: string, allFresh: boolean) => {
       esRef.current?.close();
-      const opened = Date.now();
+      // Events replayed from before we connected are history (no typing, packets or toasts);
+      // the server marks where the replay ends.
+      let caughtUp = allFresh;
       const es = new EventSource(`/api/discover/${runId}`);
       esRef.current = es;
+      es.addEventListener("caught_up", () => {
+        caughtUp = true;
+      });
       es.addEventListener("run", (e) => {
         const ev = JSON.parse((e as MessageEvent).data) as RunEvent;
-        dispatch({ kind: "event", ev, fresh: allFresh || Date.now() - opened > 800 });
+        dispatch({ kind: "event", ev, fresh: caughtUp });
         if (ev.type === "match") void refreshInvites();
         if (ev.type === "run_done" || ev.type === "run_error") es.close();
       });
-      es.onerror = () => {
-        // The server closes the stream when the run ends; only a mid-run drop is worth reconnecting.
-        if (es.readyState === EventSource.CLOSED) return;
-      };
+      es.addEventListener("server_error", (e) => {
+        es.close();
+        const { error } = JSON.parse((e as MessageEvent).data) as { error: string };
+        dispatch({ kind: "event", ev: { type: "run_error", runId, error }, fresh: true });
+      });
     },
     [refreshInvites],
   );
+
+  // Arriving with ?go=1 starts a new run, so skip replaying the previous one (it could race the new stream).
+  const autoStart = useRef(params.get("go") === "1");
 
   // Load the most recent run for this user (replays instantly).
   useEffect(() => {
     dispatch({ kind: "reset" });
     setPinned(null);
+    if (autoStart.current) return;
     let cancelled = false;
     (async () => {
       const res = await fetch(`/api/discover?userId=${meId}`, { cache: "no-store" });
@@ -69,21 +79,23 @@ function Discover() {
   const start = useCallback(async () => {
     dispatch({ kind: "starting" });
     setPinned(null);
-    const res = await fetch("/api/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId }) });
-    const data = await res.json();
-    if (!res.ok) {
-      dispatch({ kind: "event", ev: { type: "run_error", runId: "", error: data.error ?? "failed to start" }, fresh: true });
-      return;
+    try {
+      const res = await fetch("/api/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "failed to start");
+      subscribe(data.runId, true);
+    } catch (e) {
+      dispatch({ kind: "event", ev: { type: "run_error", runId: "", error: e instanceof Error ? e.message : "failed to start" }, fresh: true });
     }
-    subscribe(data.runId, true);
   }, [meId, subscribe]);
 
   useEffect(() => {
-    if (params.get("go") === "1" && me) {
+    if (autoStart.current && me) {
+      autoStart.current = false;
       router.replace("/discover");
       void start();
     }
-  }, [params, me, router, start]);
+  }, [me, router, start]);
 
   // Stay on one conversation until it wraps up, then follow the next live one. A viewer's click wins.
   const convs = run.order.map((id) => run.convs[id]);
@@ -114,7 +126,9 @@ function Discover() {
 
   const running = run.status === "starting" || run.status === "scanning" || run.status === "running";
   const talking = convs.filter((c) => !c.outcome).length;
-  const freshMatch = run.matches.find((m) => run.freshMatchIds.includes(m.id));
+  // A reconnection is the headline moment, so it takes the toast over a new-connection match.
+  const freshMatches = run.matches.filter((m) => run.freshMatchIds.includes(m.id));
+  const freshMatch = freshMatches.find((m) => m.kind === "reconnect") ?? freshMatches[0];
 
   return (
     <div className="space-y-4">

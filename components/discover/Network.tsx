@@ -45,7 +45,7 @@ export function Network({
       for (const m of c.messages) {
         if (seen.current.has(m.id)) continue;
         seen.current.add(m.id);
-        if (!m.fresh || !pos[c.b]) continue;
+        if (!m.fresh || Date.now() - m.receivedAt > 2500 || !pos[c.b]) continue;
         const fromMe = m.sender === c.a;
         const sender = others.find((u) => u.id === m.sender) ?? me;
         fresh.push({ id: `p${m.id}`, from: fromMe ? CENTER : pos[c.b], to: fromMe ? pos[c.b] : CENTER, hue: sender?.hue ?? 230 });

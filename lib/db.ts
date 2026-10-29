@@ -114,7 +114,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat_id, id);
 `;
 
-const g = globalThis as unknown as { __kindredDb?: DB };
+const g = globalThis as unknown as { __kindredDb?: DB; __kindredEpoch?: number };
+
+// Bumped on every reset. Background work (runs, intros) captures it at start and stops writing once it changes,
+// so a reset mid-run can't leak old matches or friendships into the fresh demo data.
+export const currentEpoch = () => g.__kindredEpoch ?? 0;
+export class Abandoned extends Error {}
+export function epochGuard() {
+  const start = currentEpoch();
+  return () => {
+    if (currentEpoch() !== start) throw new Abandoned("database was reset");
+  };
+}
 
 export function db(): DB {
   if (g.__kindredDb) return g.__kindredDb;
@@ -135,6 +146,7 @@ export function db(): DB {
 }
 
 export function resetDatabase() {
+  g.__kindredEpoch = currentEpoch() + 1;
   const conn = db();
   conn.exec(`
     DELETE FROM users; DELETE FROM memories; DELETE FROM friendships; DELETE FROM agent_chat;

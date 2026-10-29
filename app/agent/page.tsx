@@ -29,6 +29,9 @@ export default function AgentPage() {
   const [input, setInput] = useState("");
   const [voiceOn, setVoiceOn] = useState(true);
   const [handsFree, setHandsFree] = useState(false);
+  // Read at the end of a spoken reply, so turning Hands-free off mid-reply takes effect.
+  const handsFreeRef = useRef(handsFree);
+  handsFreeRef.current = handsFree;
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -86,14 +89,14 @@ export default function AgentPage() {
         setThinking(false);
         if (voiceOn && (viaVoice || !t)) {
           await voice.speak(d.reply);
-          if (handsFree && viaVoice) void voice.startListening();
+          if (handsFreeRef.current && viaVoice) void voice.startListening();
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : "agent failed");
         setThinking(false);
       }
     },
-    [meId, turns.length, voiceOn, handsFree, voice, refreshUsers],
+    [meId, turns.length, voiceOn, voice, refreshUsers],
   );
   sendRef.current = send;
 
@@ -104,7 +107,7 @@ export default function AgentPage() {
 
   const status =
     voice.state === "listening"
-      ? "Listening… (pauses end your turn)"
+      ? "Listening… pause or tap to send"
       : voice.state === "transcribing"
         ? "Got it…"
         : thinking

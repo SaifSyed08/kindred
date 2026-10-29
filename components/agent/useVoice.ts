@@ -15,6 +15,7 @@ export function useVoice(onTranscript: (text: string) => void) {
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number>(0);
+  const mounted = useRef(true);
   const cbRef = useRef(onTranscript);
   cbRef.current = onTranscript;
 
@@ -59,6 +60,8 @@ export function useVoice(onTranscript: (text: string) => void) {
   }, []);
 
   const startListening = useCallback(async () => {
+    // A second start while the mic is open would orphan the first recorder (and leave the mic on).
+    if (recRef.current && recRef.current.state !== "inactive") return;
     setError(null);
     stopSpeaking();
     try {
@@ -79,6 +82,7 @@ export function useVoice(onTranscript: (text: string) => void) {
         stopMeter();
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        if (!mounted.current) return;
         if (blob.size < 2000) {
           setState("idle");
           return;
@@ -89,6 +93,7 @@ export function useVoice(onTranscript: (text: string) => void) {
           form.append("audio", blob, "speech");
           const res = await fetch("/api/voice/transcribe", { method: "POST", body: form });
           const data = await res.json();
+          if (!mounted.current) return;
           setState("idle");
           if (!res.ok) throw new Error(data.error ?? "transcription failed");
           if (data.text) cbRef.current(data.text);
@@ -98,20 +103,25 @@ export function useVoice(onTranscript: (text: string) => void) {
         }
       };
 
-      // Auto-stop after ~1.4 s of silence once the person has started talking.
+      // Auto-stop after ~1.4 s of silence once the person has started talking. "Silence" is relative to the
+      // room: the quietest level seen in the first half second sets the floor, so a noisy hall still works.
+      // Tapping the orb always sends, and a 20 s cap stops runaway recordings.
       let spoke = false;
       let quietSince = 0;
+      let floor = Infinity;
       const started = performance.now();
       meter(analyser, (rms) => {
         const t = performance.now();
-        if (rms > 0.035) {
+        if (t - started < 500) floor = Math.min(floor, rms);
+        const threshold = Math.max(0.03, (Number.isFinite(floor) ? floor : 0) * 2.5);
+        if (rms > threshold) {
           spoke = true;
           quietSince = 0;
         } else if (spoke) {
           if (!quietSince) quietSince = t;
           else if (t - quietSince > 1400 && rec.state === "recording") rec.stop();
         }
-        if (t - started > 45000 && rec.state === "recording") rec.stop();
+        if (t - started > 20000 && rec.state === "recording") rec.stop();
       });
       rec.start(250);
       setState("listening");
@@ -165,14 +175,19 @@ export function useVoice(onTranscript: (text: string) => void) {
     [meter, stopSpeaking],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       cancelAnimationFrame(rafRef.current);
+      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioRef.current?.pause();
-    },
-    [],
-  );
+      if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
 
   return { state, level, error, startListening, stopListening, speak, stopSpeaking };
 }

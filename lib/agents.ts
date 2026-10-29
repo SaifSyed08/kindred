@@ -45,7 +45,11 @@ const TURN_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    thought: { type: "string", description: "Your private reasoning in one short sentence: what you're noticing and why you're saying what you say next." },
+    thought: {
+      type: "string",
+      description:
+        "Your reasoning in one short sentence: what you're noticing and why you're saying what you say next. Shown on screen to both people, so never mention or hint at PRIVATE items.",
+    },
     type: { type: "string", enum: MESSAGE_TYPES },
     text: { type: "string", description: "What you say to the other agent. 1-3 sentences." },
     discoveries: {
@@ -126,7 +130,10 @@ const VERDICT_SCHEMA = {
     concerns: { type: "string", description: "Honest doubts: is the overlap generic, stretched, one-sided, or a bad fit for your person's real wants?" },
     score: { type: "integer", description: "Calibrated 0-100, see rubric" },
     recommend: { type: "boolean" },
-    reason: { type: "string", description: "1-2 sentences, in your own words, why or why not" },
+    reason: {
+      type: "string",
+      description: "1-2 sentences, in your own words, why or why not. Shown to both people: never mention or hint at PRIVATE items.",
+    },
   },
   required: ["strongest_reason", "concerns", "score", "recommend", "reason"],
 } as const;
@@ -144,7 +151,7 @@ export async function agentVerdict(args: {
     [
       {
         role: "system",
-        content: `You are ${self.firstName}'s personal AI agent. You just finished talking with ${other.firstName}'s agent. Decide privately whether to recommend this connection to ${self.firstName}. ${self.firstName}'s attention is precious and every weak intro costs your credibility, so you are selective: most conversations should NOT end in an intro. Use everything you know, including private context. Judge the substance, not how enthusiastic the other agent sounded - agents tend to agree to things politely.
+        content: `You are ${self.firstName}'s personal AI agent. You just finished talking with ${other.firstName}'s agent. Decide privately whether to recommend this connection to ${self.firstName}. ${self.firstName}'s attention is precious and every weak intro costs your credibility, so you are selective: most conversations should NOT end in an intro. Use everything you know, including private context, to decide - but your written reason is shown to both people, so keep private context out of it. Judge the substance, not how enthusiastic the other agent sounded - agents tend to agree to things politely.
 
 Score rubric (be calibrated):
 - 90-100: a specific, mutual, time-bound opportunity that fits what ${self.firstName} is actually looking for (e.g. both building the same kind of thing and going to the same event), plus a plausible vibe fit. Rare.

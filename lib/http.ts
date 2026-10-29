@@ -36,8 +36,9 @@ export function sse(req: Request, tick: (send: (event: string, data: unknown) =>
         }
       };
       req.signal.addEventListener("abort", close);
-      step();
+      // Interval first, so a stream that finishes on its very first step still gets it cleared.
       timer = setInterval(step, intervalMs);
+      step();
     },
     cancel() {
       clearInterval(timer);
