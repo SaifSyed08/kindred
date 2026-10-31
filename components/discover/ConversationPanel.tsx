@@ -244,6 +244,8 @@ export function ConversationPanel({
                               <Chip tone={v.recommend ? "green" : "neutral"}>
                                 {v.recommend ? "Recommends" : "Passes"} · {v.score}
                               </Chip>
+                            ) : conv.outcome ? (
+                              <span className="text-ink-3">no verdict</span>
                             ) : (
                               <span className="flex items-center gap-1.5 text-ink-3">
                                 deciding <TypingDots />

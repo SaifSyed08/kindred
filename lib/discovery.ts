@@ -26,6 +26,8 @@ const MIN_TURN_MS = 2200; // keeps the live feed readable even when the model is
 // A run older than this is treated as dead (stalled network, crashed task) and a new one may start.
 const RUN_WATCHDOG_MS = 4 * 60 * 1000;
 const DECLINE_COOLDOWN_DAYS = 30;
+// Runs the watchdog gave up on. Their background work checks this and stops writing.
+const cancelledRuns = new Set<string>();
 
 const profileText = (u: User) => {
   const p = u.profile;
@@ -61,18 +63,20 @@ const cosine = (x: number[], y: number[]) => {
   return d / (Math.sqrt(nx) * Math.sqrt(ny) || 1);
 };
 
-// Kick off a discovery run in the background and return its id. One active run per user.
-export function startRun(userId: string): string {
+// Kick off a discovery run in the background and return its id. One active run per user: if one is
+// already going, its id comes back with resumed=true so the client treats the backlog as history.
+export function startRun(userId: string): { runId: string; resumed: boolean } {
   const current = latestRun(userId);
   if (current && current.status === "running") {
-    if (Date.now() - new Date(current.created_at).getTime() < RUN_WATCHDOG_MS) return current.id;
+    if (Date.now() - new Date(current.created_at).getTime() < RUN_WATCHDOG_MS) return { runId: current.id, resumed: true };
+    cancelledRuns.add(current.id);
     db().prepare("UPDATE runs SET status = 'error', finished_at = ? WHERE id = ?").run(now(), current.id);
     emit(current.id, { type: "run_error", runId: current.id, error: "Run timed out" });
   }
   const runId = uid("run");
   db().prepare("INSERT INTO runs (id, user_id, status, created_at) VALUES (?,?,?,?)").run(runId, userId, "running", now());
   void execute(runId, userId);
-  return runId;
+  return { runId, resumed: false };
 }
 
 function recentlyDeclined(x: string, y: string) {
@@ -85,7 +89,11 @@ function recentlyDeclined(x: string, y: string) {
 }
 
 async function execute(runId: string, userId: string) {
-  const guard = epochGuard();
+  const epochOk = epochGuard();
+  const guard = () => {
+    epochOk();
+    if (cancelledRuns.has(runId)) throw new Abandoned("run cancelled by watchdog");
+  };
   const say = (ev: RunEvent) => {
     guard();
     emit(runId, ev);
@@ -241,16 +249,22 @@ async function converseInner(convId: string, a: User, b: User, say: (ev: RunEven
   let matchId: string | null = null;
   // Another person's run may have introduced this pair in the meantime.
   const agreed = va.recommend && vb.recommend;
-  const both = agreed && !existingMatch(a.id, b.id);
+  let both = agreed && !existingMatch(a.id, b.id);
+  let card: MatchDraft | null = null;
   if (both) {
-    let draft: MatchDraft;
     try {
-      draft = await synthesizeMatch({ a, b, friendship, history, discoveries: confirmed, verdictA: va, verdictB: vb });
+      card = await synthesizeMatch({ a, b, friendship, history, discoveries: confirmed, verdictA: va, verdictB: vb });
     } catch (e) {
       console.error("match card failed, using fallback", e);
-      draft = fallbackDraft(a, b, !!friendship, confirmed);
+      card = fallbackDraft(a, b, !!friendship, confirmed);
     }
     guard();
+    // Re-check after the await: a concurrent run may have just introduced this pair.
+    // The check and the insert run in one synchronous step, so no other run can slip in between.
+    if (existingMatch(a.id, b.id)) both = false;
+  }
+  if (both) {
+    const draft = card!;
     matchId = uid("match");
     db()
       .prepare(

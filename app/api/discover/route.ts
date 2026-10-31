@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const { userId } = (await req.json()) as { userId?: string };
   if (!userId || !getUser(userId)) return bad("unknown user", 404);
   if (!process.env.OPENAI_API_KEY) return bad("OPENAI_API_KEY is not set on the server", 500);
-  return json({ runId: startRun(userId) });
+  return json(startRun(userId));
 }
 
 export function GET(req: Request) {

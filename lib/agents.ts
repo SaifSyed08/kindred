@@ -13,8 +13,9 @@ export function timeAgo(iso: string) {
 
 const today = () => new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-// Everything an agent knows about its own person. Private memories inform judgement but are never quoted.
-export function dossier(u: User, memories: Memory[]) {
+// Everything an agent knows about its own person. Private memories go only to calls whose output is not
+// shown verbatim (the verdict decision); the live conversation never sees them, so it cannot leak them.
+export function dossier(u: User, memories: Memory[], opts: { includePrivate?: boolean } = {}) {
   const p = u.profile;
   const facts = memories.filter((m) => m.kind === "fact").map((m) => `- ${m.text}`);
   const notes = memories.filter((m) => m.kind === "agent_note").map((m) => `- ${m.text}`);
@@ -30,7 +31,7 @@ export function dossier(u: User, memories: Memory[]) {
     `Vibe: ${p.vibe}`,
     facts.length ? `Other things you know (shareable):\n${facts.join("\n")}` : "",
     notes.length ? `Your notes from past agent conversations:\n${notes.join("\n")}` : "",
-    priv.length ? `PRIVATE (use only to judge fit; never reveal, quote or hint at these):\n${priv.join("\n")}` : "",
+    opts.includePrivate && priv.length ? `PRIVATE (use only to judge fit; never reveal, quote or hint at these):\n${priv.join("\n")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -161,7 +162,7 @@ Score rubric (be calibrated):
 If the plan sits outside ${self.firstName}'s actual interests or what they're looking for (e.g. it only works if they do something they've never shown interest in), the score is at most 70, however keen the other agent was.
 Recommend only if score >= 75.
 
-${dossier(self, args.selfMemories)}
+${dossier(self, args.selfMemories, { includePrivate: true })}
 
 ${relationLine(self, other, args.friendship)}`,
       },
@@ -285,6 +286,11 @@ const ONBOARD_SCHEMA = {
       },
       required: ["about", "interests", "values", "lookingFor", "recent", "vibe"],
     },
+    removed: {
+      type: "array",
+      items: { type: "string" },
+      description: "Exact text of existing interests/values/right-now items that the person corrected or that are no longer true. Usually empty.",
+    },
     new_memories: {
       type: "array",
       description: "New specific facts learned in the person's latest message that don't fit the profile fields. Mark private=true for sensitive things (health, feelings, relationships, insecurities).",
@@ -296,10 +302,10 @@ const ONBOARD_SCHEMA = {
       },
     },
   },
-  required: ["reply", "tagline", "profile", "new_memories"],
+  required: ["reply", "tagline", "profile", "removed", "new_memories"],
 } as const;
 
-export type OnboardOutput = { reply: string; tagline: string; profile: Profile; new_memories: { text: string; private: boolean }[] };
+export type OnboardOutput = { reply: string; tagline: string; profile: Profile; removed: string[]; new_memories: { text: string; private: boolean }[] };
 
 export async function onboardTurn(args: { user: User; memories: Memory[]; history: { role: "user" | "agent"; text: string }[]; message: string }) {
   const { user } = args;
@@ -313,7 +319,7 @@ export async function onboardTurn(args: { user: User; memories: Memory[]; histor
 Talk like a curious, warm friend in a voice conversation: short, natural, reflect back specifics, ask ONE question at a time. Explore personality, interests, recent experiences and projects, upcoming plans, the kind of people they click with, and what they're looking for socially. Pull for concrete, time-bound details (events coming up, projects in progress) - those make the best introductions. If they ask what you do, explain briefly. After you've covered a lot, tell them they can head to Discover and hit "Find connections".
 
 Keep the profile up to date with every turn: keep existing entries unless the person corrected them, add new ones, write 'about' as a third-person paragraph. Current profile and memory:
-${dossier(user, args.memories)}`,
+${dossier(user, args.memories, { includePrivate: true })}`,
       },
       ...convo,
       { role: "user", content: args.message },

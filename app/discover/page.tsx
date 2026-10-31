@@ -51,24 +51,41 @@ function Discover() {
         const { error } = JSON.parse((e as MessageEvent).data) as { error: string };
         dispatch({ kind: "event", ev: { type: "run_error", runId, error }, fresh: true });
       });
+      // A dropped connection would auto-reconnect and replay the whole run on top of the current state.
+      // Instead: close, clear, and resubscribe so the backlog comes back as history.
+      es.onerror = () => {
+        if (esRef.current !== es || es.readyState === EventSource.CLOSED) return;
+        es.close();
+        setTimeout(() => {
+          if (esRef.current !== es) return;
+          dispatch({ kind: "reset" });
+          subscribe(runId, false);
+        }, 1500);
+      };
     },
     [refreshInvites],
   );
 
   // Arriving with ?go=1 starts a new run, so skip replaying the previous one (it could race the new stream).
   const autoStart = useRef(params.get("go") === "1");
+  // The user a run was started for on this page. The load effect skips them, so a remount (React StrictMode
+  // runs effects twice in dev) can't reset or replace a run that is just starting.
+  const startedFor = useRef<string | null>(null);
 
   // Load the most recent run for this user (replays instantly).
   useEffect(() => {
+    if (autoStart.current || startedFor.current === meId) return () => esRef.current?.close();
+    startedFor.current = null;
     dispatch({ kind: "reset" });
     setPinned(null);
-    if (autoStart.current) return;
     let cancelled = false;
     (async () => {
-      const res = await fetch(`/api/discover?userId=${meId}`, { cache: "no-store" });
-      if (!res.ok || cancelled) return;
-      const { run: latest } = (await res.json()) as { run: { id: string } | null };
-      if (latest && !cancelled) subscribe(latest.id, false);
+      try {
+        const res = await fetch(`/api/discover?userId=${meId}`, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const { run: latest } = (await res.json()) as { run: { id: string } | null };
+        if (latest && !cancelled && startedFor.current !== meId) subscribe(latest.id, false);
+      } catch {}
     })();
     return () => {
       cancelled = true;
@@ -77,13 +94,15 @@ function Discover() {
   }, [meId, subscribe]);
 
   const start = useCallback(async () => {
+    startedFor.current = meId;
     dispatch({ kind: "starting" });
     setPinned(null);
     try {
       const res = await fetch("/api/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "failed to start");
-      subscribe(data.runId, true);
+      // Joining a run that was already going: its backlog is history, only what follows is live.
+      subscribe(data.runId, !data.resumed);
     } catch (e) {
       dispatch({ kind: "event", ev: { type: "run_error", runId: "", error: e instanceof Error ? e.message : "failed to start" }, fresh: true });
     }

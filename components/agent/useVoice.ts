@@ -16,6 +16,10 @@ export function useVoice(onTranscript: (text: string) => void) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number>(0);
   const mounted = useRef(true);
+  // Set synchronously so a second tap during the permission prompt can't open a second recorder.
+  const starting = useRef(false);
+  // Bumped by stopSpeaking; a reply still downloading checks it and stays silent if interrupted.
+  const speakGen = useRef(0);
   const cbRef = useRef(onTranscript);
   cbRef.current = onTranscript;
 
@@ -46,6 +50,7 @@ export function useVoice(onTranscript: (text: string) => void) {
   };
 
   const stopSpeaking = useCallback(() => {
+    speakGen.current += 1;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -61,11 +66,16 @@ export function useVoice(onTranscript: (text: string) => void) {
 
   const startListening = useCallback(async () => {
     // A second start while the mic is open would orphan the first recorder (and leave the mic on).
-    if (recRef.current && recRef.current.state !== "inactive") return;
+    if (!mounted.current || starting.current || (recRef.current && recRef.current.state !== "inactive")) return;
+    starting.current = true;
     setError(null);
     stopSpeaking();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (!mounted.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       const ac = ctx();
       const src = ac.createMediaStreamSource(stream);
@@ -106,15 +116,25 @@ export function useVoice(onTranscript: (text: string) => void) {
       // Auto-stop after ~1.4 s of silence once the person has started talking. "Silence" is relative to the
       // room: the quietest level seen in the first half second sets the floor, so a noisy hall still works.
       // Tapping the orb always sends, and a 20 s cap stops runaway recordings.
+      // Frames from the first ~150 ms (a fresh analyser reads all zeros) are skipped; the floor is the median
+      // of the next ~450 ms, so a word spoken right away doesn't set it.
       let spoke = false;
       let quietSince = 0;
-      let floor = Infinity;
+      let smooth = 0;
+      const samples: number[] = [];
+      let floor = -1;
       const started = performance.now();
       meter(analyser, (rms) => {
         const t = performance.now();
-        if (t - started < 500) floor = Math.min(floor, rms);
-        const threshold = Math.max(0.03, (Number.isFinite(floor) ? floor : 0) * 2.5);
-        if (rms > threshold) {
+        smooth = smooth * 0.8 + rms * 0.2;
+        if (t - started < 150 || rms < 0.001) return;
+        if (t - started < 600) {
+          samples.push(rms);
+          return;
+        }
+        if (floor < 0) floor = samples.length ? [...samples].sort((x, y) => x - y)[Math.floor(samples.length / 2)] : 0.01;
+        const threshold = Math.max(0.03, floor * 2.5);
+        if (smooth > threshold) {
           spoke = true;
           quietSince = 0;
         } else if (spoke) {
@@ -126,19 +146,27 @@ export function useVoice(onTranscript: (text: string) => void) {
       rec.start(250);
       setState("listening");
     } catch (e) {
+      if (!mounted.current) return;
       setError(e instanceof Error && e.name === "NotAllowedError" ? "Microphone permission denied" : "Couldn't access the microphone");
       setState("idle");
+    } finally {
+      starting.current = false;
     }
   }, [meter, stopSpeaking]);
 
   const speak = useCallback(
     async (text: string) => {
+      if (!mounted.current) return;
       stopSpeaking();
+      const gen = speakGen.current;
+      const interrupted = () => !mounted.current || speakGen.current !== gen;
       setState("speaking");
       try {
         const res = await fetch("/api/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
         if (!res.ok) throw new Error("tts failed");
-        const url = URL.createObjectURL(await res.blob());
+        const blob = await res.blob();
+        if (interrupted()) return;
+        const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audioRef.current = audio;
         try {
@@ -159,7 +187,7 @@ export function useVoice(onTranscript: (text: string) => void) {
         URL.revokeObjectURL(url);
       } catch {
         // Fall back to the browser's own voice.
-        if (typeof speechSynthesis !== "undefined") {
+        if (!interrupted() && typeof speechSynthesis !== "undefined") {
           await new Promise<void>((resolve) => {
             const u = new SpeechSynthesisUtterance(text);
             u.onend = () => resolve();
