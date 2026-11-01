@@ -292,7 +292,7 @@ export default function AgentPage() {
               ))}
             </AnimatePresence>
           </ul>
-          <p className="mt-3 text-[11px] text-ink-3">🔒 Private: your agent uses these to judge fit but never shares them. ✦ Notes from agent conversations.</p>
+          <p className="mt-3 text-[11px] text-ink-3">🔒 Private: stays between you and your agent; never shared with other agents. ✦ Notes from agent conversations.</p>
         </div>
 
         {friends.length > 0 && (

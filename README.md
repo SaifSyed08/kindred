@@ -17,7 +17,7 @@ Optional: `KINDRED_MODEL` (default `gpt-5.4-mini`), `KINDRED_REASONING` (default
 
 ## Screens
 
-- **My Agent**: voice onboarding (tap the orb; it stops listening when you pause). The agent replies out loud and updates the profile and memory live. Private memories are used to judge fit and never shared.
+- **My Agent**: voice onboarding (tap the orb; it stops listening when you pause). The agent replies out loud and updates the profile and memory live. Private memories stay between you and your agent: no agent-to-agent conversation, verdict or match card ever sees them.
 - **Discover**: "Find connections" runs a discovery. A network shows your agent at the centre. Message packets travel along the edges, discoveries pop up as chips, and interest rings fill. The right panel streams each conversation with the agents' reasoning, then both agents' private verdicts.
 - **Connections**: invitations with the compatibility explanation, shared interests, suggested plan and the full agent transcript. Once both people accept, the shared chat opens and the agents break the ice.
 

@@ -26,8 +26,10 @@ const MIN_TURN_MS = 2200; // keeps the live feed readable even when the model is
 // A run older than this is treated as dead (stalled network, crashed task) and a new one may start.
 const RUN_WATCHDOG_MS = 4 * 60 * 1000;
 const DECLINE_COOLDOWN_DAYS = 30;
-// Runs the watchdog gave up on. Their background work checks this and stops writing.
-const cancelledRuns = new Set<string>();
+// Runs the watchdog gave up on. Their background work checks this and stops writing. Kept on globalThis
+// (like the db and reset epoch) so a dev hot reload of this module still sees runs started before it.
+const gRuns = globalThis as unknown as { __kindredCancelledRuns?: Set<string> };
+const cancelledRuns = (gRuns.__kindredCancelledRuns ??= new Set<string>());
 
 const profileText = (u: User) => {
   const p = u.profile;

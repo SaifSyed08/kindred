@@ -13,8 +13,9 @@ export function timeAgo(iso: string) {
 
 const today = () => new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-// Everything an agent knows about its own person. Private memories go only to calls whose output is not
-// shown verbatim (the verdict decision); the live conversation never sees them, so it cannot leak them.
+// Everything an agent knows about its own person. Private memories go only to the onboarding chat with the
+// person themself. Every agent-to-agent call (turns, verdicts, match cards) is shown on screen, so those
+// never see private memories and cannot leak them.
 export function dossier(u: User, memories: Memory[], opts: { includePrivate?: boolean } = {}) {
   const p = u.profile;
   const facts = memories.filter((m) => m.kind === "fact").map((m) => `- ${m.text}`);
@@ -31,7 +32,7 @@ export function dossier(u: User, memories: Memory[], opts: { includePrivate?: bo
     `Vibe: ${p.vibe}`,
     facts.length ? `Other things you know (shareable):\n${facts.join("\n")}` : "",
     notes.length ? `Your notes from past agent conversations:\n${notes.join("\n")}` : "",
-    opts.includePrivate && priv.length ? `PRIVATE (use only to judge fit; never reveal, quote or hint at these):\n${priv.join("\n")}` : "",
+    opts.includePrivate && priv.length ? `PRIVATE (things they told you in confidence; keep them out of the profile fields):\n${priv.join("\n")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -49,7 +50,7 @@ const TURN_SCHEMA = {
     thought: {
       type: "string",
       description:
-        "Your reasoning in one short sentence: what you're noticing and why you're saying what you say next. Shown on screen to both people, so never mention or hint at PRIVATE items.",
+        "Your reasoning in one short sentence: what you're noticing and why you're saying what you say next. Shown on screen to both people.",
     },
     type: { type: "string", enum: MESSAGE_TYPES },
     text: { type: "string", description: "What you say to the other agent. 1-3 sentences." },
@@ -100,7 +101,7 @@ How to talk:
 - When the other agent mentions a plan, event, project or problem, check your notes: if ${self.firstName} has the same or a complementary one, say so explicitly and specifically - those coincidences are the most valuable thing you can find.
 - Be a discerning advocate, not a people-pleaser. ${self.firstName}'s time is limited. A vague overlap ("both like community", "both enjoy making things") is not a reason to meet; if that's all there is, say so kindly and conclude. Don't stretch your person's interests to fit the other side, and push back if the other agent is stretching.
 - Only use type "propose" when there is a specific opportunity both sides are clearly excited about.
-- Never reveal PRIVATE items, never invent facts about ${self.firstName}, and don't claim feelings or intentions they haven't expressed.
+- Never invent facts about ${self.firstName}, and don't claim feelings or intentions they haven't expressed.
 - type: greet (first hello), ask, share, discover (you just noticed a real overlap), propose (suggest they meet/do a specific thing), conclude (wrap up).
 - discoveries: only overlaps confirmed by BOTH sides in the conversation so far, not yet in this list: ${args.confirmed.map((d) => d.label).join(", ") || "(none yet)"}.`;
 
@@ -133,7 +134,7 @@ const VERDICT_SCHEMA = {
     recommend: { type: "boolean" },
     reason: {
       type: "string",
-      description: "1-2 sentences, in your own words, why or why not. Shown to both people: never mention or hint at PRIVATE items.",
+      description: "1-2 sentences, in your own words, why or why not. Shown to both people.",
     },
   },
   required: ["strongest_reason", "concerns", "score", "recommend", "reason"],
@@ -152,7 +153,7 @@ export async function agentVerdict(args: {
     [
       {
         role: "system",
-        content: `You are ${self.firstName}'s personal AI agent. You just finished talking with ${other.firstName}'s agent. Decide privately whether to recommend this connection to ${self.firstName}. ${self.firstName}'s attention is precious and every weak intro costs your credibility, so you are selective: most conversations should NOT end in an intro. Use everything you know, including private context, to decide - but your written reason is shown to both people, so keep private context out of it. Judge the substance, not how enthusiastic the other agent sounded - agents tend to agree to things politely.
+        content: `You are ${self.firstName}'s personal AI agent. You just finished talking with ${other.firstName}'s agent. Decide privately whether to recommend this connection to ${self.firstName}. ${self.firstName}'s attention is precious and every weak intro costs your credibility, so you are selective: most conversations should NOT end in an intro. Judge the substance, not how enthusiastic the other agent sounded - agents tend to agree to things politely.
 
 Score rubric (be calibrated):
 - 90-100: a specific, mutual, time-bound opportunity that fits what ${self.firstName} is actually looking for (e.g. both building the same kind of thing and going to the same event), plus a plausible vibe fit. Rare.
@@ -162,7 +163,7 @@ Score rubric (be calibrated):
 If the plan sits outside ${self.firstName}'s actual interests or what they're looking for (e.g. it only works if they do something they've never shown interest in), the score is at most 70, however keen the other agent was.
 Recommend only if score >= 75.
 
-${dossier(self, args.selfMemories, { includePrivate: true })}
+${dossier(self, args.selfMemories)}
 
 ${relationLine(self, other, args.friendship)}`,
       },
@@ -318,7 +319,7 @@ export async function onboardTurn(args: { user: User; memories: Memory[]; histor
 
 Talk like a curious, warm friend in a voice conversation: short, natural, reflect back specifics, ask ONE question at a time. Explore personality, interests, recent experiences and projects, upcoming plans, the kind of people they click with, and what they're looking for socially. Pull for concrete, time-bound details (events coming up, projects in progress) - those make the best introductions. If they ask what you do, explain briefly. After you've covered a lot, tell them they can head to Discover and hit "Find connections".
 
-Keep the profile up to date with every turn: keep existing entries unless the person corrected them, add new ones, write 'about' as a third-person paragraph. Current profile and memory:
+Keep the profile up to date with every turn (the profile is what your agent shares with other agents, so sensitive things like feelings, health or relationships go in new_memories with private=true, never in the profile fields): keep existing entries unless the person corrected them, add new ones, write 'about' as a third-person paragraph. Current profile and memory:
 ${dossier(user, args.memories, { includePrivate: true })}`,
       },
       ...convo,

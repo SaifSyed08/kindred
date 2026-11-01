@@ -66,6 +66,12 @@ function Discover() {
     [refreshInvites],
   );
 
+  // Null the ref too, so a pending reconnect timer (which checks esRef.current === its stream) stands down.
+  const closeStream = useCallback(() => {
+    esRef.current?.close();
+    esRef.current = null;
+  }, []);
+
   // Arriving with ?go=1 starts a new run, so skip replaying the previous one (it could race the new stream).
   const autoStart = useRef(params.get("go") === "1");
   // The user a run was started for on this page. The load effect skips them, so a remount (React StrictMode
@@ -74,7 +80,7 @@ function Discover() {
 
   // Load the most recent run for this user (replays instantly).
   useEffect(() => {
-    if (autoStart.current || startedFor.current === meId) return () => esRef.current?.close();
+    if (autoStart.current || startedFor.current === meId) return closeStream;
     startedFor.current = null;
     dispatch({ kind: "reset" });
     setPinned(null);
@@ -89,18 +95,21 @@ function Discover() {
     })();
     return () => {
       cancelled = true;
-      esRef.current?.close();
+      closeStream();
     };
-  }, [meId, subscribe]);
+  }, [meId, subscribe, closeStream]);
 
   const start = useCallback(async () => {
-    startedFor.current = meId;
+    const userId = meId;
+    startedFor.current = userId;
     dispatch({ kind: "starting" });
     setPinned(null);
     try {
       const res = await fetch("/api/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: meId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "failed to start");
+      // The viewer switched user while the request was in flight.
+      if (startedFor.current !== userId) return;
       // Joining a run that was already going: its backlog is history, only what follows is live.
       subscribe(data.runId, !data.resumed);
     } catch (e) {

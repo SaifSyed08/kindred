@@ -116,8 +116,9 @@ export function useVoice(onTranscript: (text: string) => void) {
       // Auto-stop after ~1.4 s of silence once the person has started talking. "Silence" is relative to the
       // room: the quietest level seen in the first half second sets the floor, so a noisy hall still works.
       // Tapping the orb always sends, and a 20 s cap stops runaway recordings.
-      // Frames from the first ~150 ms (a fresh analyser reads all zeros) are skipped; the floor is the median
-      // of the next ~450 ms, so a word spoken right away doesn't set it.
+      // Frames from the first ~150 ms (a fresh analyser reads all zeros) are skipped; the floor is a low
+      // percentile of the next ~450 ms (the gaps between syllables if they start talking right away), and the
+      // threshold is clamped so a loud start can't push it above normal speech.
       let spoke = false;
       let quietSince = 0;
       let smooth = 0;
@@ -127,13 +128,14 @@ export function useVoice(onTranscript: (text: string) => void) {
       meter(analyser, (rms) => {
         const t = performance.now();
         smooth = smooth * 0.8 + rms * 0.2;
+        if (t - started > 20000 && rec.state === "recording") rec.stop();
         if (t - started < 150 || rms < 0.001) return;
         if (t - started < 600) {
           samples.push(rms);
           return;
         }
-        if (floor < 0) floor = samples.length ? [...samples].sort((x, y) => x - y)[Math.floor(samples.length / 2)] : 0.01;
-        const threshold = Math.max(0.03, floor * 2.5);
+        if (floor < 0) floor = samples.length ? [...samples].sort((x, y) => x - y)[Math.floor(samples.length * 0.1)] : 0.01;
+        const threshold = Math.min(0.06, Math.max(0.03, floor * 2.5));
         if (smooth > threshold) {
           spoke = true;
           quietSince = 0;
@@ -141,7 +143,6 @@ export function useVoice(onTranscript: (text: string) => void) {
           if (!quietSince) quietSince = t;
           else if (t - quietSince > 1400 && rec.state === "recording") rec.stop();
         }
-        if (t - started > 20000 && rec.state === "recording") rec.stop();
       });
       rec.start(250);
       setState("listening");
@@ -186,6 +187,8 @@ export function useVoice(onTranscript: (text: string) => void) {
         });
         URL.revokeObjectURL(url);
       } catch {
+        // Interrupted: a recording may own the meter now, so touch nothing.
+        if (interrupted()) return;
         // Fall back to the browser's own voice.
         if (!interrupted() && typeof speechSynthesis !== "undefined") {
           await new Promise<void>((resolve) => {
@@ -196,6 +199,7 @@ export function useVoice(onTranscript: (text: string) => void) {
           });
         }
       }
+      if (interrupted()) return;
       if (audioRef.current) audioRef.current = null;
       stopMeter();
       setState((s) => (s === "speaking" ? "idle" : s));
