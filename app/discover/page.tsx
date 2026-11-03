@@ -113,6 +113,7 @@ function Discover() {
       // Joining a run that was already going: its backlog is history, only what follows is live.
       subscribe(data.runId, !data.resumed);
     } catch (e) {
+      if (startedFor.current !== userId) return;
       dispatch({ kind: "event", ev: { type: "run_error", runId: "", error: e instanceof Error ? e.message : "failed to start" }, fresh: true });
     }
   }, [meId, subscribe]);

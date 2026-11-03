@@ -135,7 +135,7 @@ export function useVoice(onTranscript: (text: string) => void) {
           return;
         }
         if (floor < 0) floor = samples.length ? [...samples].sort((x, y) => x - y)[Math.floor(samples.length * 0.1)] : 0.01;
-        const threshold = Math.min(0.06, Math.max(0.03, floor * 2.5));
+        const threshold = Math.min(0.12, Math.max(0.03, floor * 2.5));
         if (smooth > threshold) {
           spoke = true;
           quietSince = 0;

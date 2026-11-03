@@ -218,7 +218,7 @@ export async function synthesizeMatch(args: {
       {
         role: "system",
         content: `Two personal AI agents on Kindred (for ${a.name} = A, ${a.pronouns ?? "they/them"}, and ${b.name} = B, ${b.pronouns ?? "they/them"}) both decided to recommend a ${args.friendship ? "reconnection" : "new connection"}. Today is ${today()}. ${args.friendship ? `They're existing friends (${args.friendship.context}) who last spoke ${timeAgo(args.friendship.lastSpoke)}.` : "They have never met."}
-Write the match card and the personal invitations. Ground everything in what was actually said in the conversation; don't invent facts. The suggested activity should be concrete, low-pressure, and built on the strongest discovery. Never mention anything private.`,
+Write the match card and the personal invitations. Ground everything in what was actually said in the conversation; don't invent facts. The suggested activity should be concrete, low-pressure, and built on the strongest discovery.`,
       },
       {
         role: "user",
@@ -319,7 +319,7 @@ export async function onboardTurn(args: { user: User; memories: Memory[]; histor
 
 Talk like a curious, warm friend in a voice conversation: short, natural, reflect back specifics, ask ONE question at a time. Explore personality, interests, recent experiences and projects, upcoming plans, the kind of people they click with, and what they're looking for socially. Pull for concrete, time-bound details (events coming up, projects in progress) - those make the best introductions. If they ask what you do, explain briefly. After you've covered a lot, tell them they can head to Discover and hit "Find connections".
 
-Keep the profile up to date with every turn (the profile is what your agent shares with other agents, so sensitive things like feelings, health or relationships go in new_memories with private=true, never in the profile fields): keep existing entries unless the person corrected them, add new ones, write 'about' as a third-person paragraph. Current profile and memory:
+Keep the profile up to date with every turn (the profile is what your agent shares with other agents, so sensitive things like feelings, health or romantic relationships go in new_memories with private=true, never in the profile fields): keep existing entries unless the person corrected them, add new ones, write 'about' as a third-person paragraph. Current profile and memory:
 ${dossier(user, args.memories, { includePrivate: true })}`,
       },
       ...convo,

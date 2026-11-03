@@ -301,8 +301,7 @@ async function converseInner(convId: string, a: User, b: User, say: (ev: RunEven
   guard();
   db().prepare("UPDATE conversations SET status = 'done', outcome = ? WHERE id = ?").run(JSON.stringify(outcome), convId);
 
-  // Each agent remembers what came up. Built from confirmed overlaps only: verdict reasons can draw on
-  // private context, and these notes are treated as shareable.
+  // Each agent remembers what came up, built from the confirmed overlaps.
   const day = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const learned = confirmed.map((d) => d.label).join(", ");
   addMemory(a.id, "agent_note", noteFor(day, b, learned, both), "conversation");
