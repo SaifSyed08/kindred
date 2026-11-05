@@ -294,7 +294,7 @@ const ONBOARD_SCHEMA = {
     },
     new_memories: {
       type: "array",
-      description: "New specific facts learned in the person's latest message that don't fit the profile fields. Mark private=true for sensitive things (health, feelings, relationships, insecurities).",
+      description: "New specific facts learned in the person's latest message that don't fit the profile fields. Mark private=true for sensitive things (health, feelings, romantic relationships, insecurities).",
       items: {
         type: "object",
         additionalProperties: false,
